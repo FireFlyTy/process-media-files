@@ -1,0 +1,9 @@
+fastapi==0.127.1
+fitz==0.0.1.dev2
+numpy==2.4.0
+openai==2.14.0
+Pillow==12.0.0
+pydantic==2.12.5
+pypdf==6.5.0
+python-dotenv==1.2.1
+uvicorn==0.40.0

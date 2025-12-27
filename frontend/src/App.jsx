@@ -1245,7 +1245,7 @@ function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-800">Document Verification</h1>
-              <p className="text-xs text-slate-500">Compensation Claims Processing v2.0</p>
+              <p className="text-xs text-slate-500">Compensation Claims Processing v1.0</p>
             </div>
           </div>
           
