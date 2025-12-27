@@ -19,6 +19,7 @@ from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
+
 from openai import OpenAI
 
 from models import (
@@ -132,12 +133,6 @@ def call_llm_with_image(prompt: str, image_path: str) -> dict:
 
 def call_llm_with_pdf(prompt: str, pdf_path: str) -> dict:
     """Call LLM with a PDF file."""
-    from pypdf import PdfReader
-
-    reader = PdfReader(pdf_path)
-    if reader.is_encrypted:
-        return {}
-
     with open(pdf_path, "rb") as f:
         pdf_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
@@ -193,27 +188,20 @@ def parse_json_response(content: str) -> dict:
 
 def extract_images_from_pdf(pdf_path: str, min_size: int = 100) -> dict:
     """
-    Extract images from PDF using PyMuPDF.
+    Extract embedded images from PDF using PyMuPDF.
+
+    Only extracts embedded images (photos). If PDF has images that can't be
+    extracted (scans, "broken" PDFs), returns empty and fallback will be used.
 
     Args:
         pdf_path: Path to PDF file
-        min_size: Minimum image dimension to include (filters out icons)
+        min_size: Minimum image dimension to include (filters out icons/logos)
 
     Returns:
         Dictionary with extraction results:
         {
-            "extraction_method": "embedded" | "rendered" | "mixed" | "none",
-            "images": [
-                {
-                    "type": "embedded" | "page_render",
-                    "page": int,
-                    "index": int,
-                    "width": int,
-                    "height": int,
-                    "format": str,
-                    "data": bytes
-                }
-            ],
+            "extraction_method": "embedded" | "none",
+            "images": [...],
             "pages_with_images": [int],
             "total_images": int
         }
@@ -232,14 +220,11 @@ def extract_images_from_pdf(pdf_path: str, min_size: int = 100) -> dict:
     doc = fitz.open(pdf_path)
     images = []
     pages_with_images = set()
-    has_embedded = False
 
     for page_num, page in enumerate(doc):
         page_number = page_num + 1
         embedded_images = page.get_images()
 
-        # Filter and extract embedded images
-        valid_embedded = []
         for img_idx, img in enumerate(embedded_images):
             xref = img[0]
             try:
@@ -247,9 +232,9 @@ def extract_images_from_pdf(pdf_path: str, min_size: int = 100) -> dict:
                 width = base_image["width"]
                 height = base_image["height"]
 
-                # Filter out small images (icons, logos)
+                # Filter out small images (icons, logos, stamps)
                 if width >= min_size and height >= min_size:
-                    valid_embedded.append({
+                    images.append({
                         "type": "embedded",
                         "page": page_number,
                         "index": img_idx + 1,
@@ -258,28 +243,14 @@ def extract_images_from_pdf(pdf_path: str, min_size: int = 100) -> dict:
                         "format": base_image["ext"],
                         "data": base_image["image"]
                     })
+                    pages_with_images.add(page_number)
             except Exception:
                 continue
 
-        if valid_embedded:
-            has_embedded = True
-            pages_with_images.add(page_number)
-            images.extend(valid_embedded)
-        elif len(embedded_images) == 1:
-            # Single image covering whole page = likely a scan
-            # Don't add as separate image, will process as PDF
-            pass
-
     doc.close()
 
-    # Determine extraction method
-    if has_embedded:
-        method = "embedded"
-    else:
-        method = "none"
-
     return {
-        "extraction_method": method,
+        "extraction_method": "embedded" if images else "none",
         "images": images,
         "pages_with_images": sorted(pages_with_images),
         "total_images": len(images)
@@ -557,7 +528,11 @@ def extract_details(file_path: str, document_type: str) -> Optional[ExtractionRe
 # MAIN FUNCTION: ANALYZE DOCUMENT
 # =============================================================================
 
-def analyze_document(file_path: str, skip_extraction: bool = False) -> DocumentAnalysis:
+def analyze_document(
+    file_path: str,
+    skip_extraction: bool = False,
+    on_progress: callable = None
+) -> DocumentAnalysis:
     """
     Analyze document through classification, image analysis, and extraction stages.
 
@@ -569,11 +544,19 @@ def analyze_document(file_path: str, skip_extraction: bool = False) -> DocumentA
     Args:
         file_path: Path to PDF or image file
         skip_extraction: If True, only run classification (faster)
+        on_progress: Optional callback(stage, progress, message) for progress updates
+            - stage: str - current stage name
+            - progress: float - 0.0 to 1.0
+            - message: str - human-readable status
 
     Returns:
         DocumentAnalysis with combined results
     """
     from prompts import get_extraction_prompt_with_images
+
+    def progress(stage: str, pct: float, msg: str = ""):
+        if on_progress:
+            on_progress(stage, pct, msg)
 
     file_type = get_file_type(file_path)
     page_count = None
@@ -584,7 +567,9 @@ def analyze_document(file_path: str, skip_extraction: bool = False) -> DocumentA
     # =========================================================================
     # STAGE 1: Classification
     # =========================================================================
+    progress("classification", 0.10, "Classifying document...")
     classification = classify_document(file_path)
+    progress("classification", 0.20, f"Classified as {classification.document_type}")
 
     # Check if document has images (from classification)
     has_images = getattr(classification, 'has_images', False) or \
@@ -600,15 +585,25 @@ def analyze_document(file_path: str, skip_extraction: bool = False) -> DocumentA
     image_analysis = None
 
     if file_type == "pdf" and has_images and not skip_extraction:
+        progress("image_extraction", 0.25, "Extracting images from PDF...")
         try:
+            progress("image_analysis", 0.35, "Analyzing images independently...")
             image_analysis = analyze_pdf_images(
                 pdf_path=file_path,
                 classification_has_images=has_images
             )
+            if image_analysis:
+                img_count = image_analysis.get('images_analyzed', 0)
+                progress("image_analysis", 0.50, f"Analyzed {img_count} images")
+            else:
+                progress("image_analysis", 0.50, "No images to analyze")
         except Exception as e:
             # Log but don't fail - continue without image analysis
             print(f"Warning: Image analysis failed: {e}")
+            progress("image_analysis", 0.50, "Image analysis skipped")
             image_analysis = None
+    else:
+        progress("image_analysis", 0.50, "No image analysis needed")
 
     # =========================================================================
     # STAGE 3: Extraction with image analysis context
@@ -616,15 +611,18 @@ def analyze_document(file_path: str, skip_extraction: bool = False) -> DocumentA
     extraction = None
 
     if not skip_extraction:
+        progress("extraction", 0.55, "Extracting document details...")
         extraction = extract_details_with_images(
             file_path=file_path,
             document_type=classification.document_type,
             image_analysis=image_analysis
         )
+        progress("extraction", 0.75, "Details extracted")
 
     # =========================================================================
     # Combine results
     # =========================================================================
+    progress("combining", 0.80, "Combining analysis results...")
     analysis = DocumentAnalysis.from_stages(
         file_path=file_path,
         file_type=file_type,
@@ -647,6 +645,7 @@ def analyze_document(file_path: str, skip_extraction: bool = False) -> DocumentA
                     if mismatch_detail:
                         analysis.red_flags.append(f"Mismatch: {mismatch_detail}")
 
+    progress("done", 0.85, "Document analysis complete")
     return analysis
 
 
@@ -816,7 +815,11 @@ def get_pdf_processing_rules(document_type: str, creation_method: str) -> dict:
 if __name__ == "__main__":
     import sys
 
-    file_path = "data/dsns_damage_certificate.pdf"
+    if len(sys.argv) < 2:
+        print("Usage: python documents_classifier.py <file_path>")
+        sys.exit(1)
+
+    file_path = sys.argv[1]
 
     print(f"Analyzing: {file_path}")
     print("=" * 50)

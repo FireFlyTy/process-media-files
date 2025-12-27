@@ -112,23 +112,17 @@ IDENTIFYING FEATURES:
 Does not fit any category above.
 
 ## Creation Method:
-
 1. **scanned** - Scanned paper document
    Signs: paper texture, slight rotation, scan artifacts, uneven lighting, visible paper edges
-
 2. **digital_native** - Created digitally  
    Signs: perfect alignment, clean background, crisp text, no paper texture
-
 3. **photo_converted** - Photographed document saved as PDF
    Signs: perspective distortion, shadows, uneven lighting, background visible
-
 4. **screenshot** - Screenshot saved as PDF (RED FLAG!)
    Signs: UI elements, status bar, browser chrome, screen artifacts
-
 5. **unknown** - Cannot determine
 
 ## CRITICAL DECISION RULES:
-
 Rule 1: If you see GOVERNMENT LETTERHEAD (ДСНС, ОВА, etc.) → official_certificate (NOT damage_act)
 Rule 2: If document has ONLY photos with no official text → photo_collection
 Rule 3: If signatures have TITLES/RANKS → likely official_certificate
@@ -222,7 +216,6 @@ IDENTIFYING FEATURES:
 Does not fit categories above.
 
 ## CRITICAL RULES:
-
 Rule 1: If you see STATUS BAR, BROWSER UI, or APP INTERFACE → screenshot (RED FLAG)
 Rule 2: Analyze ACTUAL content - what does the photo SHOW?
 Rule 3: For damage: describe SPECIFIC damage visible (holes, cracks, debris)

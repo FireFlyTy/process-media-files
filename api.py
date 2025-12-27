@@ -98,27 +98,23 @@ class BatchUploadResponse(BaseModel):
 # =============================================================================
 
 def process_file_task(file_path: str, task_id: str) -> Dict[str, Any]:
-    """Process a single file through the pipeline."""
+    """Process a single file through the pipeline with progress updates."""
     start_time = datetime.now()
     path = Path(file_path)
 
     # Update task status
     tasks[task_id]["status"] = "processing"
-    tasks[task_id]["stage"] = "Classifying document..."
-    tasks[task_id]["progress"] = 10
+    tasks[task_id]["stage"] = "Starting..."
+    tasks[task_id]["progress"] = 0
+
+    # Progress callback that updates task dict
+    def on_progress(stage: str, progress: float, message: str):
+        tasks[task_id]["stage"] = message or stage
+        tasks[task_id]["progress"] = int(progress * 100)
 
     try:
-        # Process using pipeline
-        tasks[task_id]["stage"] = "Analyzing document..."
-        tasks[task_id]["progress"] = 30
-
-        result = process_document(file_path)
-
-        tasks[task_id]["stage"] = "Validating..."
-        tasks[task_id]["progress"] = 70
-
-        tasks[task_id]["stage"] = "Finalizing..."
-        tasks[task_id]["progress"] = 90
+        # Process using pipeline with progress callback
+        result = process_document(file_path, on_progress=on_progress)
 
         # Calculate processing time
         processing_time = int((datetime.now() - start_time).total_seconds() * 1000)

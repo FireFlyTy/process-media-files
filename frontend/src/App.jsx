@@ -59,7 +59,7 @@ const FileItem = ({ file, isSelected, onClick, onDelete, onRetry }) => {
   const statusIcons = {
     pending: <Clock size={16} className="text-slate-400 animate-pulse" />,
     processing: <RefreshCw size={16} className="text-blue-500 animate-spin" />,
-    completed: file.result?.decision === 'ACCEPT'
+    completed: file.result?.decision === 'ACCEPT' 
       ? <CheckCircle size={16} className="text-emerald-500" />
       : file.result?.decision === 'REVIEW'
         ? <Clock size={16} className="text-amber-500" />
@@ -69,46 +69,60 @@ const FileItem = ({ file, isSelected, onClick, onDelete, onRetry }) => {
 
   const isImage = file.type?.startsWith('image/');
   const canRetry = file.status === 'error' || file.status === 'completed';
+  const progress = file.progress || 0;
 
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border-2 ${
+      className={`relative overflow-hidden rounded-xl cursor-pointer transition-all border-2 ${
         isSelected 
           ? 'bg-teal-50 border-teal-400' 
           : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
       }`}
     >
-      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-        {isImage ? <Image size={20} className="text-slate-500" /> : <FileText size={20} className="text-slate-500" />}
-      </div>
+      {/* Progress bar background */}
+      {file.status === 'processing' && (
+        <div 
+          className="absolute inset-0 bg-blue-50 transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      )}
+      
+      {/* Content */}
+      <div className="relative flex items-center gap-3 p-3">
+        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+          {isImage ? <Image size={20} className="text-slate-500" /> : <FileText size={20} className="text-slate-500" />}
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
+          <p className="text-xs text-slate-500 truncate">
+            {file.status === 'processing' 
+              ? `${progress}% — ${file.stage || 'Processing...'}`
+              : file.status}
+            {file.retryCount > 0 && ` (retry #${file.retryCount})`}
+          </p>
+        </div>
 
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
-        <p className="text-xs text-slate-500">
-          {file.status === 'processing' && file.stage ? file.stage : file.status}
-          {file.retryCount > 0 && ` (retry #${file.retryCount})`}
-        </p>
-      </div>
-
-      <div className="flex items-center gap-1">
-        {statusIcons[file.status]}
-        {canRetry && (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {statusIcons[file.status]}
+          {canRetry && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRetry(file.id); }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+              title="Retry"
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
           <button
-            onClick={(e) => { e.stopPropagation(); onRetry(file.id); }}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-            title="Retry"
+            onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            title="Delete"
           >
-            <RotateCcw size={14} />
+            <Trash2 size={14} />
           </button>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-          title="Delete"
-        >
-          <Trash2 size={14} />
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -124,15 +138,15 @@ const AnalysisSection = ({ analysis }) => {
   // Check for specific warnings
   const warnings = analysis.warnings || [];
   const extractedData = analysis.extracted_data || {};
-
+  
   // Determine if stamp has a warning (government stamp on non-official doc)
-  const hasGovernmentStampWarning = warnings.some(w =>
+  const hasGovernmentStampWarning = warnings.some(w => 
     w.toLowerCase().includes('government stamp')
   );
-
+  
   // Determine badge style based on element presence and context
   const isOfficialDoc = ['official_certificate', 'court_decision', 'registration_extract'].includes(analysis.document_type);
-
+  
   const getStampBadgeStyle = () => {
     if (analysis.has_stamp) {
       // Has stamp - but check if it's unexpected (warning)
@@ -147,7 +161,7 @@ const AnalysisSection = ({ analysis }) => {
     }
     return 'bg-slate-50 text-slate-400 border border-slate-200'; // OK, not required
   };
-
+  
   const getBadgeStyle = (hasElement) => {
     if (hasElement) return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
     if (isOfficialDoc) return 'bg-amber-50 text-amber-600 border border-amber-200';
@@ -177,7 +191,7 @@ const AnalysisSection = ({ analysis }) => {
               <span className="text-sm text-slate-600">Creation Method</span>
               <span className="text-sm text-slate-800 capitalize">{analysis.creation_method?.replace('_', ' ')}</span>
             </div>
-
+            
             {analysis.document_date && (
               <div className="flex justify-between">
                 <span className="text-sm text-slate-600 flex items-center gap-1">
@@ -256,7 +270,7 @@ const AnalysisSection = ({ analysis }) => {
             )}
           </>
         )}
-
+        
         {/* Brief description */}
         {analysis.brief_description && (
           <div className="mt-3 pt-3 border-t border-slate-100">
@@ -278,8 +292,16 @@ const AnalysisSection = ({ analysis }) => {
 };
 
 // Extracted data section (type-specific)
-const ExtractedDataSection = ({ extractedData, documentType }) => {
+const ExtractedDataSection = ({ extractedData, documentType, warnings = [] }) => {
   if (!extractedData || Object.keys(extractedData).length === 0) return null;
+
+  // Check if there are editing-related warnings
+  const hasEditingWarning = warnings.some(w => 
+    w.toLowerCase().includes('photoshop') || 
+    w.toLowerCase().includes('editing software') ||
+    w.toLowerCase().includes('edited') ||
+    w.toLowerCase().includes('manipulation')
+  );
 
   // Field labels for better display
   const fieldLabels = {
@@ -296,6 +318,23 @@ const ExtractedDataSection = ({ extractedData, documentType }) => {
     witnesses_count: { label: 'Witnesses', icon: User },
     witnesses_names: { label: 'Witness Names', icon: User },
     holder_name: { label: 'Holder Name', icon: User },
+    appears_authentic: { label: 'Appears Authentic', icon: Shield },
+  };
+
+  // Helper to render a value safely
+  const renderValue = (value) => {
+    if (value === null || value === undefined) return '—';
+    if (typeof value === 'boolean') return value ? '✓ Yes' : '— No';
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    if (Array.isArray(value)) return value.join(', ');
+    if (typeof value === 'object') {
+      // Render object as key-value pairs
+      return Object.entries(value)
+        .filter(([k, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${renderValue(v)}`)
+        .join('; ');
+    }
+    return String(value);
   };
 
   return (
@@ -308,9 +347,30 @@ const ExtractedDataSection = ({ extractedData, documentType }) => {
       <div className="space-y-3">
         {Object.entries(extractedData).map(([key, value]) => {
           if (value === null || value === undefined) return null;
-
+          
           const config = fieldLabels[key] || { label: key.replace(/_/g, ' '), icon: null };
           const Icon = config.icon;
+
+          // Special handling for appears_authentic with editing warnings
+          if (key === 'appears_authentic') {
+            const isCompromised = hasEditingWarning;
+            const displayValue = isCompromised ? '⚠️ Questionable' : (value ? '✓ Yes' : '✗ No');
+            const colorClass = isCompromised 
+              ? 'text-amber-600 bg-amber-50' 
+              : (value ? 'text-emerald-600' : 'text-red-600');
+            
+            return (
+              <div key={key} className={`flex justify-between items-center p-2 rounded ${isCompromised ? 'bg-amber-50' : ''}`}>
+                <span className="text-sm text-slate-600 flex items-center gap-1">
+                  {Icon && <Icon size={12} />}
+                  {config.label}
+                </span>
+                <span className={`text-sm font-bold ${colorClass}`}>
+                  {displayValue}
+                </span>
+              </div>
+            );
+          }
 
           // Handle arrays
           if (Array.isArray(value)) {
@@ -322,7 +382,7 @@ const ExtractedDataSection = ({ extractedData, documentType }) => {
                 </span>
                 <ul className="text-sm text-slate-700 bg-slate-50 p-2 rounded space-y-1">
                   {value.map((item, i) => (
-                    <li key={i}>• {item}</li>
+                    <li key={i}>• {renderValue(item)}</li>
                   ))}
                 </ul>
               </div>
@@ -344,6 +404,28 @@ const ExtractedDataSection = ({ extractedData, documentType }) => {
             );
           }
 
+          // Handle objects (nested data)
+          if (typeof value === 'object') {
+            return (
+              <div key={key} className="mt-2">
+                <span className="text-xs text-slate-500 flex items-center gap-1 mb-1">
+                  {Icon && <Icon size={12} />}
+                  {config.label}
+                </span>
+                <div className="text-sm text-slate-700 bg-slate-50 p-2 rounded space-y-1">
+                  {Object.entries(value).map(([subKey, subValue]) => (
+                    subValue !== null && subValue !== undefined && (
+                      <div key={subKey} className="flex justify-between">
+                        <span className="text-slate-500 capitalize">{subKey.replace(/_/g, ' ')}:</span>
+                        <span className="text-slate-800">{renderValue(subValue)}</span>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </div>
+            );
+          }
+
           // Handle strings/numbers
           return (
             <div key={key} className="flex justify-between items-start">
@@ -351,7 +433,7 @@ const ExtractedDataSection = ({ extractedData, documentType }) => {
                 {Icon && <Icon size={12} />}
                 {config.label}
               </span>
-              <span className="text-sm text-slate-800 text-right max-w-[60%]">{value}</span>
+              <span className="text-sm text-slate-800 text-right max-w-[60%]">{renderValue(value)}</span>
             </div>
           );
         })}
@@ -457,7 +539,7 @@ function App() {
     }
     return [];
   });
-
+  
   const [selectedFileId, setSelectedFileId] = useState(() => {
     try {
       return localStorage.getItem('docVerification_selectedId') || null;
@@ -465,7 +547,7 @@ function App() {
       return null;
     }
   });
-
+  
   const [isDragging, setIsDragging] = useState(false);
 
   // Save to localStorage when files change
@@ -551,7 +633,7 @@ function App() {
   // Upload file
   const uploadFile = useCallback(async (file) => {
     const fileId = Math.random().toString(36).substr(2, 9);
-
+    
     setFiles(prev => [...prev, {
       id: fileId,
       name: file.name,
@@ -642,14 +724,14 @@ function App() {
     try {
       // Call retry endpoint
       const res = await axios.post(`${API_URL}/retry/${file.taskId}`);
-
+      
       // Update local state
       setFiles(prev => prev.map(f => {
         if (f.id === fileId) {
-          return {
-            ...f,
-            status: 'processing',
-            stage: 'Retrying...',
+          return { 
+            ...f, 
+            status: 'processing', 
+            stage: 'Retrying...', 
             result: null,
             error: null,
             retryCount: (f.retryCount || 0) + 1
@@ -692,7 +774,7 @@ function App() {
       {/* Main content */}
       <main className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-12 gap-6">
-
+          
           {/* Left column - Upload & File list */}
           <div className="col-span-4 space-y-4">
             {/* Upload zone */}
@@ -780,13 +862,13 @@ function App() {
                       >
                         <RotateCcw size={18} />
                       </button>
-                      <DecisionBadge
-                        decision={selectedFile.result.decision}
+                      <DecisionBadge 
+                        decision={selectedFile.result.decision} 
                         confidence={selectedFile.result.confidence}
                       />
                     </div>
                   </div>
-
+                  
                   {/* Red flags */}
                   {selectedFile.result.red_flags?.length > 0 && (
                     <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -811,9 +893,14 @@ function App() {
                 {/* Details grid */}
                 <div className="grid grid-cols-2 gap-4">
                   <AnalysisSection analysis={selectedFile.result.analysis} />
-                  <ExtractedDataSection
+                  <ExtractedDataSection 
                     extractedData={selectedFile.result.analysis?.extracted_data}
                     documentType={selectedFile.result.analysis?.document_type}
+                    warnings={[
+                      ...(selectedFile.result.analysis?.warnings || []),
+                      ...(selectedFile.result.validation?.warnings || []),
+                      ...(selectedFile.result.warnings || [])
+                    ]}
                   />
                 </div>
 
