@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -375,6 +375,40 @@ async def delete_task(task_id: str):
     del tasks[task_id]
 
     return {"message": "Task deleted", "task_id": task_id}
+
+
+@app.get("/file/{task_id}")
+async def get_file(task_id: str):
+    """Get uploaded file for viewing."""
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task = tasks[task_id]
+    file_path = task.get("file_path")
+
+    if not file_path or not Path(file_path).exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Determine media type
+    ext = Path(file_path).suffix.lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".tiff": "image/tiff",
+        ".tif": "image/tiff",
+        ".bmp": "image/bmp",
+    }
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=task.get("file_name", Path(file_path).name)
+    )
 
 
 @app.post("/retry/{task_id}")

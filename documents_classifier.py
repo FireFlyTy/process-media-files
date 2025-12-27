@@ -93,6 +93,8 @@ def get_pdf_page_count(file_path: str) -> Optional[int]:
     try:
         from pypdf import PdfReader
         reader = PdfReader(file_path)
+        if reader.is_encrypted:
+            return -1
         return len(reader.pages)
     except Exception:
         return None
@@ -206,16 +208,7 @@ def extract_images_from_pdf(pdf_path: str, min_size: int = 100) -> dict:
             "total_images": int
         }
     """
-    try:
-        import fitz  # PyMuPDF
-    except ImportError:
-        return {
-            "error": "PyMuPDF not installed",
-            "extraction_method": "none",
-            "images": [],
-            "pages_with_images": [],
-            "total_images": 0
-        }
+    import fitz
 
     doc = fitz.open(pdf_path)
     images = []
@@ -563,6 +556,15 @@ def analyze_document(
 
     if file_type == "pdf":
         page_count = get_pdf_page_count(file_path)
+        if page_count == -1:
+            return DocumentAnalysis.from_stages(
+        file_path=file_path,
+        file_type=file_type,
+        classification=ClassificationResult(red_flags=['File is encripted']),
+        extraction= None,
+        page_count=None,
+    )
+
 
     # =========================================================================
     # STAGE 1: Classification

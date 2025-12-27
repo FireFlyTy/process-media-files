@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Upload, FileText, Image, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, FileCheck, Shield, Camera, Building, User, Calendar, MapPin, Hash, RotateCcw, XCircle } from 'lucide-react';
+import { Upload, FileText, Image, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, FileCheck, Shield, Camera, Building, User, Calendar, MapPin, Hash, RotateCcw, XCircle, Download, Eye, X, FileDown } from 'lucide-react';
 import axios from 'axios';
 
 const API_URL = 'http://localhost:8000';
@@ -55,7 +55,7 @@ const DecisionBadge = ({ decision, confidence }) => {
 };
 
 // File item in list
-const FileItem = ({ file, isSelected, onClick, onDelete, onRetry }) => {
+const FileItem = ({ file, isSelected, onClick, onDelete, onRetry, onView }) => {
   const statusIcons = {
     pending: <Clock size={16} className="text-slate-400 animate-pulse" />,
     processing: <RefreshCw size={16} className="text-blue-500 animate-spin" />,
@@ -69,60 +69,77 @@ const FileItem = ({ file, isSelected, onClick, onDelete, onRetry }) => {
 
   const isImage = file.type?.startsWith('image/');
   const canRetry = file.status === 'error' || file.status === 'completed';
+  const canView = file.taskId && (file.status === 'completed' || file.status === 'error');
   const progress = file.progress || 0;
 
   return (
-    <div
-      onClick={onClick}
-      className={`relative overflow-hidden rounded-xl cursor-pointer transition-all border-2 ${
-        isSelected 
-          ? 'bg-teal-50 border-teal-400' 
-          : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-      }`}
-    >
-      {/* Progress bar background */}
-      {file.status === 'processing' && (
-        <div 
-          className="absolute inset-0 bg-blue-50 transition-all duration-300"
-          style={{ width: `${progress}%` }}
-        />
-      )}
-      
-      {/* Content */}
-      <div className="relative flex items-center gap-3 p-3">
-        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-          {isImage ? <Image size={20} className="text-slate-500" /> : <FileText size={20} className="text-slate-500" />}
-        </div>
+    <div className="group flex items-center gap-1">
+      {/* Main card */}
+      <div
+        onClick={onClick}
+        className={`relative overflow-hidden rounded-xl cursor-pointer transition-all border-2 flex-1 ${
+          isSelected 
+            ? 'bg-teal-50 border-teal-400' 
+            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+        }`}
+      >
+        {/* Progress bar background */}
+        {file.status === 'processing' && (
+          <div 
+            className="absolute inset-0 bg-blue-50 transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        )}
         
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
-          <p className="text-xs text-slate-500 truncate">
-            {file.status === 'processing' 
-              ? `${progress}% — ${file.stage || 'Processing...'}`
-              : file.status}
-            {file.retryCount > 0 && ` (retry #${file.retryCount})`}
-          </p>
-        </div>
+        {/* Content */}
+        <div className="relative flex items-center gap-3 p-3">
+          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+            {isImage ? <Image size={20} className="text-slate-500" /> : <FileText size={20} className="text-slate-500" />}
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
+            <p className="text-xs text-slate-500 truncate">
+              {file.status === 'processing' 
+                ? `${progress}% — ${file.stage || 'Processing...'}`
+                : file.status}
+              {file.retryCount > 0 && ` (retry #${file.retryCount})`}
+            </p>
+          </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {statusIcons[file.status]}
-          {canRetry && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onRetry(file.id); }}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-              title="Retry"
-            >
-              <RotateCcw size={14} />
-            </button>
-          )}
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-            title="Delete"
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {statusIcons[file.status]}
+            {canView && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onView(file); }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-teal-500 hover:bg-teal-50 transition-colors"
+                title="View document"
+              >
+                <Eye size={14} />
+              </button>
+            )}
+          </div>
         </div>
+      </div>
+
+      {/* Hover actions - outside the card */}
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {canRetry && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRetry(file.id); }}
+            className="p-1.5 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+            title="Retry"
+          >
+            <RotateCcw size={14} />
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
+          className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+          title="Delete"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
     </div>
   );
@@ -442,6 +459,201 @@ const ExtractedDataSection = ({ extractedData, documentType, warnings = [] }) =>
   );
 };
 
+// PDF Viewer Component - uses native browser PDF viewer
+const PDFViewer = ({ url }) => {
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch PDF as blob to create local URL (avoids CORS issues with iframe)
+  useEffect(() => {
+    const fetchPdf = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetch(url);
+        if (response.status === 404) {
+          throw new Error('File no longer available on server');
+        }
+        if (!response.ok) throw new Error('Failed to fetch PDF');
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(blobUrl);
+        setLoading(false);
+      } catch (err) {
+        console.error('PDF fetch error:', err);
+        setError(err.message || 'Failed to load PDF');
+        setLoading(false);
+      }
+    };
+    fetchPdf();
+    
+    return () => {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+    };
+  }, [url]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 w-full h-[70vh]">
+        <RefreshCw size={32} className="animate-spin text-teal-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-slate-500">
+        <FileText size={48} className="mx-auto mb-4 opacity-50" />
+        <p className="text-red-500 mb-2">{error}</p>
+        <p className="text-sm">File may have been deleted after server restart.</p>
+        <p className="text-sm">Please re-upload the document.</p>
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      src={pdfBlobUrl}
+      className="w-full h-[70vh] rounded-lg border-0"
+      title="PDF Preview"
+    />
+  );
+};
+
+// Image Viewer Component with error handling - fetches as blob to avoid CORS
+const ImageViewer = ({ url, alt }) => {
+  const [imageBlobUrl, setImageBlobUrl] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchImage = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetch(url);
+        if (response.status === 404) {
+          throw new Error('File no longer available on server');
+        }
+        if (!response.ok) throw new Error('Failed to fetch image');
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        setImageBlobUrl(blobUrl);
+        setLoading(false);
+      } catch (err) {
+        console.error('Image fetch error:', err);
+        setError(err.message || 'Failed to load image');
+        setLoading(false);
+      }
+    };
+    fetchImage();
+    
+    return () => {
+      if (imageBlobUrl) URL.revokeObjectURL(imageBlobUrl);
+    };
+  }, [url]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw size={32} className="animate-spin text-teal-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-slate-500">
+        <FileText size={48} className="mx-auto mb-4 opacity-50" />
+        <p className="text-red-500 mb-2">{error}</p>
+        <p className="text-sm">Please re-upload the document.</p>
+      </div>
+    );
+  }
+
+  return (
+    <img 
+      src={imageBlobUrl} 
+      alt={alt}
+      className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
+    />
+  );
+};
+
+// Document Preview Modal
+const DocumentPreview = ({ file, onClose }) => {
+  if (!file) return null;
+
+  const isImage = file.type?.startsWith('image/') || 
+    ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => file.name?.toLowerCase().endsWith(ext));
+  const isPDF = file.name?.toLowerCase().endsWith('.pdf');
+  
+  // Use API endpoint if taskId available, otherwise use local blob
+  const previewUrl = file.taskId 
+    ? `${API_URL}/file/${file.taskId}`
+    : (file.previewUrl || (file.file ? URL.createObjectURL(file.file) : null));
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div 
+        className="bg-white rounded-2xl max-w-5xl max-h-[90vh] w-full overflow-hidden shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            {isImage ? <Image size={20} className="text-slate-500" /> : <FileText size={20} className="text-slate-500" />}
+            <h3 className="font-bold text-slate-800 truncate max-w-md">{file.name}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {previewUrl && (
+              <a
+                href={previewUrl}
+                download={file.name}
+                className="p-2 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                title="Download"
+                onClick={e => e.stopPropagation()}
+              >
+                <Download size={20} />
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+        
+        {/* Content */}
+        <div className="p-4 max-h-[calc(90vh-80px)] overflow-auto bg-slate-100 flex items-center justify-center min-h-[60vh]">
+          {isImage && previewUrl ? (
+            <ImageViewer url={previewUrl} alt={file.name} />
+          ) : isPDF && previewUrl ? (
+            <PDFViewer url={previewUrl} />
+          ) : (
+            <div className="text-center py-12 text-slate-500">
+              <FileText size={48} className="mx-auto mb-4 opacity-50" />
+              <p>Preview not available</p>
+              {previewUrl && (
+                <a 
+                  href={previewUrl} 
+                  download={file.name}
+                  className="text-teal-600 hover:underline mt-2 inline-block"
+                >
+                  Download file
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Validation section
 const ValidationSection = ({ validation }) => {
   if (!validation) return null;
@@ -549,6 +761,269 @@ function App() {
   });
   
   const [isDragging, setIsDragging] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+
+  // Export single file report
+  const exportFileReport = useCallback((file, format = 'json') => {
+    if (!file?.result) return;
+    
+    const report = {
+      file_name: file.name,
+      processed_at: file.result.timestamp,
+      decision: file.result.decision,
+      decision_reason: file.result.decision_reason,
+      confidence: file.result.confidence,
+      document_type: file.result.analysis?.document_type,
+      document_type_ua: file.result.analysis?.document_type_ua,
+      red_flags: file.result.red_flags,
+      warnings: file.result.warnings,
+      analysis: file.result.analysis,
+      validation: file.result.validation,
+    };
+    
+    if (format === 'html') {
+      const html = generateHTMLReport([report], false);
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report_${file.name.replace(/\.[^/.]+$/, '')}_${new Date().toISOString().slice(0,10)}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report_${file.name.replace(/\.[^/.]+$/, '')}_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, []);
+
+  // Generate HTML report
+  const generateHTMLReport = (fileReports, isBatch = true) => {
+    const decisionColors = {
+      ACCEPT: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+      REVIEW: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+      REJECT: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
+    };
+
+    const summary = isBatch ? {
+      total: fileReports.length,
+      accepted: fileReports.filter(f => f.decision === 'ACCEPT').length,
+      review: fileReports.filter(f => f.decision === 'REVIEW').length,
+      rejected: fileReports.filter(f => f.decision === 'REJECT').length,
+    } : null;
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Verification Report - ${new Date().toLocaleDateString()}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.5; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+    .header { text-align: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid #e2e8f0; }
+    .header h1 { color: #0f766e; font-size: 1.75rem; margin-bottom: 0.5rem; }
+    .header .date { color: #64748b; font-size: 0.875rem; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+    .summary-card { background: white; border-radius: 0.75rem; padding: 1rem; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .summary-card .number { font-size: 2rem; font-weight: bold; }
+    .summary-card .label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; }
+    .summary-card.accept .number { color: #059669; }
+    .summary-card.review .number { color: #d97706; }
+    .summary-card.reject .number { color: #dc2626; }
+    .file-card { background: white; border-radius: 0.75rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+    .file-header { padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+    .file-name { font-weight: 600; font-size: 1rem; }
+    .decision-badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; border: 1px solid; }
+    .file-body { padding: 1.5rem; }
+    .section { margin-bottom: 1.5rem; }
+    .section:last-child { margin-bottom: 0; }
+    .section-title { font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; margin-bottom: 0.75rem; }
+    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+    .info-item { display: flex; justify-content: space-between; padding: 0.5rem; background: #f8fafc; border-radius: 0.375rem; }
+    .info-label { color: #64748b; font-size: 0.875rem; }
+    .info-value { font-weight: 500; font-size: 0.875rem; }
+    .flags-list { list-style: none; }
+    .flags-list li { padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; border-radius: 0.375rem; font-size: 0.875rem; }
+    .flags-list li.red-flag { background: #fee2e2; color: #991b1b; border-left: 3px solid #dc2626; }
+    .flags-list li.warning { background: #fef3c7; color: #92400e; border-left: 3px solid #f59e0b; }
+    .no-issues { color: #059669; font-size: 0.875rem; }
+    .extracted-data { background: #f8fafc; border-radius: 0.5rem; padding: 1rem; }
+    .extracted-item { display: flex; justify-content: space-between; padding: 0.375rem 0; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem; }
+    .extracted-item:last-child { border-bottom: none; }
+    .footer { text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 0.75rem; }
+    @media print { body { background: white; } .container { max-width: none; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📋 Document Verification Report</h1>
+      <p class="date">Generated: ${new Date().toLocaleString()}</p>
+    </div>
+    
+    ${summary ? `
+    <div class="summary">
+      <div class="summary-card">
+        <div class="number">${summary.total}</div>
+        <div class="label">Total Files</div>
+      </div>
+      <div class="summary-card accept">
+        <div class="number">${summary.accepted}</div>
+        <div class="label">Accepted</div>
+      </div>
+      <div class="summary-card review">
+        <div class="number">${summary.review}</div>
+        <div class="label">Review</div>
+      </div>
+      <div class="summary-card reject">
+        <div class="number">${summary.rejected}</div>
+        <div class="label">Rejected</div>
+      </div>
+    </div>
+    ` : ''}
+    
+    ${fileReports.map(f => {
+      const colors = decisionColors[f.decision] || decisionColors.REVIEW;
+      const redFlags = f.red_flags || [];
+      const warnings = f.warnings || [];
+      const extractedData = f.analysis?.extracted_data || {};
+      
+      return `
+    <div class="file-card">
+      <div class="file-header">
+        <span class="file-name">📄 ${f.file_name}</span>
+        <span class="decision-badge" style="background:${colors.bg};color:${colors.text};border-color:${colors.border}">
+          ${f.decision} (${Math.round((f.confidence || 0) * 100)}%)
+        </span>
+      </div>
+      <div class="file-body">
+        <div class="section">
+          <div class="section-title">Document Information</div>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">Type</span>
+              <span class="info-value">${f.document_type || 'Unknown'}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Type (UA)</span>
+              <span class="info-value">${f.document_type_ua || '—'}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Processed</span>
+              <span class="info-value">${f.processed_at ? new Date(f.processed_at).toLocaleString() : '—'}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Reason</span>
+              <span class="info-value">${f.decision_reason || '—'}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Issues Found</div>
+          ${redFlags.length === 0 && warnings.length === 0 ? '<p class="no-issues">✓ No issues found</p>' : `
+          <ul class="flags-list">
+            ${redFlags.map(flag => `<li class="red-flag">🚩 ${flag}</li>`).join('')}
+            ${warnings.map(warn => `<li class="warning">⚠️ ${warn}</li>`).join('')}
+          </ul>
+          `}
+        </div>
+        
+        ${Object.keys(extractedData).length > 0 ? `
+        <div class="section">
+          <div class="section-title">Extracted Data</div>
+          <div class="extracted-data">
+            ${Object.entries(extractedData).map(([key, value]) => {
+              if (value === null || value === undefined) return '';
+              const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+              return `<div class="extracted-item">
+                <span class="info-label">${key.replace(/_/g, ' ')}</span>
+                <span class="info-value">${displayValue}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ` : ''}
+      </div>
+    </div>`;
+    }).join('')}
+    
+    <div class="footer">
+      Document Verification System • Report generated automatically
+    </div>
+  </div>
+</body>
+</html>`;
+  };
+
+  // Export all files report (JSON)
+  const exportAllReportsJSON = useCallback(() => {
+    const completedFiles = files.filter(f => f.status === 'completed' && f.result);
+    if (completedFiles.length === 0) return;
+    
+    const report = {
+      generated_at: new Date().toISOString(),
+      total_files: completedFiles.length,
+      summary: {
+        accepted: completedFiles.filter(f => f.result.decision === 'ACCEPT').length,
+        review: completedFiles.filter(f => f.result.decision === 'REVIEW').length,
+        rejected: completedFiles.filter(f => f.result.decision === 'REJECT').length,
+      },
+      files: completedFiles.map(f => ({
+        file_name: f.name,
+        decision: f.result.decision,
+        confidence: f.result.confidence,
+        document_type: f.result.analysis?.document_type,
+        document_type_ua: f.result.analysis?.document_type_ua,
+        red_flags: f.result.red_flags,
+        warnings: f.result.warnings,
+        analysis: f.result.analysis,
+        validation: f.result.validation,
+      }))
+    };
+    
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `verification_report_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [files]);
+
+  // Export all files report (HTML)
+  const exportAllReportsHTML = useCallback(() => {
+    const completedFiles = files.filter(f => f.status === 'completed' && f.result);
+    if (completedFiles.length === 0) return;
+    
+    const fileReports = completedFiles.map(f => ({
+      file_name: f.name,
+      processed_at: f.result.timestamp,
+      decision: f.result.decision,
+      decision_reason: f.result.decision_reason,
+      confidence: f.result.confidence,
+      document_type: f.result.analysis?.document_type,
+      document_type_ua: f.result.analysis?.document_type_ua,
+      red_flags: f.result.red_flags,
+      warnings: f.result.warnings,
+      analysis: f.result.analysis,
+    }));
+    
+    const html = generateHTMLReport(fileReports, true);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `verification_report_${new Date().toISOString().slice(0,10)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [files]);
 
   // Save to localStorage when files change
   useEffect(() => {
@@ -756,6 +1231,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      {/* Preview Modal */}
+      {previewFile && (
+        <DocumentPreview file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
+
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -768,13 +1248,39 @@ function App() {
               <p className="text-xs text-slate-500">Compensation Claims Processing v2.0</p>
             </div>
           </div>
+          
+          {/* Export dropdown */}
+          {files.some(f => f.status === 'completed') && (
+            <div className="relative group">
+              <button
+                className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors"
+              >
+                <Download size={16} />
+                Export All
+              </button>
+              <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 min-w-[140px]">
+                <button
+                  onClick={exportAllReportsJSON}
+                  className="block w-full px-4 py-2 text-sm text-left text-slate-700 hover:bg-teal-50 hover:text-teal-700 rounded-t-lg"
+                >
+                  📄 JSON
+                </button>
+                <button
+                  onClick={exportAllReportsHTML}
+                  className="block w-full px-4 py-2 text-sm text-left text-slate-700 hover:bg-teal-50 hover:text-teal-700 rounded-b-lg"
+                >
+                  🌐 HTML
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Main content */}
       <main className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-12 gap-6">
-          
+
           {/* Left column - Upload & File list */}
           <div className="col-span-4 space-y-4">
             {/* Upload zone */}
@@ -831,6 +1337,7 @@ function App() {
                       onClick={() => setSelectedFileId(file.id)}
                       onDelete={deleteFile}
                       onRetry={retryFile}
+                      onView={(f) => setPreviewFile(f)}
                     />
                   ))}
                 </div>
@@ -855,6 +1362,38 @@ function App() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Preview button */}
+                      <button
+                        onClick={() => setPreviewFile(selectedFile)}
+                        className="p-2 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                        title="Preview document"
+                      >
+                        <Eye size={18} />
+                      </button>
+                      {/* Export dropdown */}
+                      <div className="relative group">
+                        <button
+                          className="p-2 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                          title="Export report"
+                        >
+                          <Download size={18} />
+                        </button>
+                        <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                          <button
+                            onClick={() => exportFileReport(selectedFile, 'json')}
+                            className="block w-full px-4 py-2 text-sm text-left text-slate-700 hover:bg-teal-50 hover:text-teal-700 rounded-t-lg"
+                          >
+                            📄 Export JSON
+                          </button>
+                          <button
+                            onClick={() => exportFileReport(selectedFile, 'html')}
+                            className="block w-full px-4 py-2 text-sm text-left text-slate-700 hover:bg-teal-50 hover:text-teal-700 rounded-b-lg"
+                          >
+                            🌐 Export HTML
+                          </button>
+                        </div>
+                      </div>
+                      {/* Retry button */}
                       <button
                         onClick={() => retryFile(selectedFile.id)}
                         className="p-2 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
@@ -862,7 +1401,7 @@ function App() {
                       >
                         <RotateCcw size={18} />
                       </button>
-                      <DecisionBadge 
+                      <DecisionBadge
                         decision={selectedFile.result.decision} 
                         confidence={selectedFile.result.confidence}
                       />
