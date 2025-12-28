@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Open circle (larger gap at top-right) -->
+  <path d="M68 12 A42 42 0 1 0 92 35" fill="none" stroke="#14b8a6" stroke-width="6" stroke-linecap="round"/>
+  <!-- Checkmark - short left, long right extending outside circle -->
+  <path d="M34 52 L48 68 L90 15" fill="none" stroke="#14b8a6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

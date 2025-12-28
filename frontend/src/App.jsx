@@ -145,45 +145,118 @@ const FileItem = ({ file, isSelected, onClick, onDelete, onRetry, onView }) => {
   );
 };
 
+// Document type groups for conditional display
+const DOC_GROUPS = {
+  // PDFs requiring official elements
+  OFFICIAL: ['official_certificate', 'court_decision', 'registration_extract'],
+  // PDFs with some official elements
+  SEMI_OFFICIAL: ['damage_act', 'property_document', 'medical_record'],
+  // Personal documents
+  PERSONAL: ['identity_document'],
+  // Financial/utility documents
+  FINANCIAL: ['utility_bill', 'financial_statement'],
+  // Photo collections
+  PHOTOS: ['photo_collection'],
+  // Application forms
+  FORMS: ['application_form'],
+
+  // Images showing damage
+  DAMAGE_IMAGES: ['damage_photo'],
+  // Property images (may have damage)
+  PROPERTY_IMAGES: ['property_exterior', 'property_interior', 'before_after'],
+  // Document/ID photos
+  DOC_IMAGES: ['identity_photo', 'document_photo'],
+  // Screenshots (red flag)
+  INVALID: ['screenshot'],
+};
+
+// Field expectations per document type
+const FIELD_RULES = {
+  // PDF types
+  official_certificate: { stamp: 'required', signature: 'required', letterhead: 'required' },
+  court_decision: { stamp: 'required', signature: 'required', letterhead: 'required' },
+  registration_extract: { stamp: 'required', signature: 'required', letterhead: 'required' },
+  damage_act: { stamp: 'optional', signature: 'required', letterhead: 'unexpected' },
+  property_document: { stamp: 'optional', signature: 'optional', letterhead: 'hidden' },
+  medical_record: { stamp: 'optional', signature: 'required', letterhead: 'optional' },
+  identity_document: { stamp: 'hidden', signature: 'hidden', letterhead: 'hidden' },
+  utility_bill: { stamp: 'hidden', signature: 'hidden', letterhead: 'hidden' },
+  financial_statement: { stamp: 'hidden', signature: 'hidden', letterhead: 'hidden' },
+  photo_collection: { stamp: 'hidden', signature: 'hidden', letterhead: 'hidden' },
+  application_form: { stamp: 'hidden', signature: 'required', letterhead: 'hidden' },
+
+  // Image types
+  damage_photo: { damage: 'required' },
+  property_exterior: { damage: 'optional' },
+  property_interior: { damage: 'optional' },
+  before_after: { damage: 'hidden' },
+  identity_photo: { damage: 'hidden', authentic: 'required' },
+  document_photo: { damage: 'hidden', authentic: 'optional' },
+  screenshot: { damage: 'hidden' },
+};
+
 // Analysis section (from LLM classification + extraction)
 const AnalysisSection = ({ analysis }) => {
   if (!analysis) return null;
 
   const fileType = analysis.file_type;
   const isPDF = fileType === 'pdf';
-
-  // Check for specific warnings
+  const docType = analysis.document_type;
+  const rules = FIELD_RULES[docType] || {};
   const warnings = analysis.warnings || [];
-  const extractedData = analysis.extracted_data || {};
-  
-  // Determine if stamp has a warning (government stamp on non-official doc)
-  const hasGovernmentStampWarning = warnings.some(w => 
+
+  // Check for specific warning patterns
+  const hasGovernmentStampWarning = warnings.some(w =>
     w.toLowerCase().includes('government stamp')
   );
-  
-  // Determine badge style based on element presence and context
-  const isOfficialDoc = ['official_certificate', 'court_decision', 'registration_extract'].includes(analysis.document_type);
-  
-  const getStampBadgeStyle = () => {
-    if (analysis.has_stamp) {
-      // Has stamp - but check if it's unexpected (warning)
-      if (hasGovernmentStampWarning) {
-        return 'bg-amber-50 text-amber-600 border border-amber-200'; // Unexpected stamp
-      }
-      return 'bg-emerald-50 text-emerald-700 border border-emerald-200'; // Expected stamp
+  const hasUnexpectedLetterhead = warnings.some(w =>
+    w.toLowerCase().includes('letterhead') && w.toLowerCase().includes('unexpected')
+  );
+
+  // Badge style based on field rule and presence
+  const getFieldBadgeStyle = (fieldName, hasValue) => {
+    const rule = rules[fieldName];
+
+    if (rule === 'required') {
+      return hasValue
+        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' // ✓ Has required
+        : 'bg-red-50 text-red-600 border border-red-200'; // ✗ Missing required
     }
-    // No stamp
-    if (isOfficialDoc) {
-      return 'bg-amber-50 text-amber-600 border border-amber-200'; // Missing required stamp
+    if (rule === 'optional') {
+      return hasValue
+        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' // ✓ Has optional
+        : 'bg-slate-50 text-slate-400 border border-slate-200'; // — No optional (OK)
     }
-    return 'bg-slate-50 text-slate-400 border border-slate-200'; // OK, not required
+    if (rule === 'unexpected') {
+      return hasValue
+        ? 'bg-amber-50 text-amber-600 border border-amber-200' // ⚠ Has unexpected
+        : 'bg-slate-50 text-slate-400 border border-slate-200'; // — No unexpected (OK)
+    }
+    // hidden - shouldn't be displayed, but if value exists show as warning
+    if (hasValue) {
+      return 'bg-amber-50 text-amber-600 border border-amber-200';
+    }
+    return null; // Don't display
   };
-  
-  const getBadgeStyle = (hasElement) => {
-    if (hasElement) return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-    if (isOfficialDoc) return 'bg-amber-50 text-amber-600 border border-amber-200';
-    return 'bg-slate-50 text-slate-400 border border-slate-200';
+
+  // Check if field should be displayed
+  const shouldShowField = (fieldName, hasValue) => {
+    const rule = rules[fieldName];
+    if (rule === 'hidden') {
+      return hasValue; // Only show hidden fields if they unexpectedly have value
+    }
+    return rule !== undefined; // Show if rule exists
   };
+
+  // Check if showing official elements grid
+  const showOfficialElements = isPDF && (
+    shouldShowField('stamp', analysis.has_stamp) ||
+    shouldShowField('signature', analysis.has_signature) ||
+    shouldShowField('letterhead', analysis.has_letterhead)
+  );
+
+  // Check if this is a screenshot (red flag type)
+  const isScreenshot = docType === 'screenshot';
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -197,18 +270,27 @@ const AnalysisSection = ({ analysis }) => {
         <div className="flex justify-between items-start">
           <span className="text-sm text-slate-600">Document Type</span>
           <div className="text-right">
-            <span className="text-sm font-bold text-slate-800 block">{formatDocumentType(analysis.document_type)}</span>
+            <span className="text-sm font-bold text-slate-800 block">{formatDocumentType(docType)}</span>
             <span className="text-xs text-slate-500">{analysis.document_type_ua}</span>
           </div>
         </div>
 
-        {isPDF && (
+        {/* Screenshot warning banner */}
+        {isScreenshot && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm font-bold text-red-600">⛔ Screenshot Detected</p>
+            <p className="text-xs text-red-500 mt-1">Screenshots are not accepted as valid documents</p>
+          </div>
+        )}
+
+        {/* PDF-specific fields */}
+        {isPDF && !isScreenshot && (
           <>
             <div className="flex justify-between">
               <span className="text-sm text-slate-600">Creation Method</span>
               <span className="text-sm text-slate-800 capitalize">{analysis.creation_method?.replace('_', ' ')}</span>
             </div>
-            
+
             {analysis.document_date && (
               <div className="flex justify-between">
                 <span className="text-sm text-slate-600 flex items-center gap-1">
@@ -219,6 +301,7 @@ const AnalysisSection = ({ analysis }) => {
               </div>
             )}
 
+            {/* Issuing Authority - for official/semi-official docs */}
             {analysis.issuing_authority && (
               <div className="mt-2">
                 <span className="text-xs text-slate-500 flex items-center gap-1 mb-1">
@@ -229,25 +312,77 @@ const AnalysisSection = ({ analysis }) => {
               </div>
             )}
 
-            {/* Official elements grid */}
-            <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
-              <div className={`text-center p-2 rounded-lg ${getStampBadgeStyle()}`}>
-                <span className="text-xs font-bold">Stamp</span>
-                <p className="text-lg">{analysis.has_stamp ? '✓' : '—'}</p>
-                {hasGovernmentStampWarning && <p className="text-[10px]">gov</p>}
+            {/* Official elements grid - contextual */}
+            {showOfficialElements && (
+              <div className={`grid gap-2 mt-3 pt-3 border-t border-slate-100 ${
+                shouldShowField('letterhead', analysis.has_letterhead) ? 'grid-cols-3' : 'grid-cols-2'
+              }`}>
+                {shouldShowField('stamp', analysis.has_stamp) && (
+                  <div className={`text-center p-2 rounded-lg ${getFieldBadgeStyle('stamp', analysis.has_stamp)}`}>
+                    <span className="text-xs font-bold">Stamp</span>
+                    <p className="text-lg">{analysis.has_stamp ? '✓' : '—'}</p>
+                    {hasGovernmentStampWarning && <p className="text-[10px]">gov ⚠</p>}
+                    {rules.stamp === 'unexpected' && analysis.has_stamp && <p className="text-[10px]">unexpected</p>}
+                  </div>
+                )}
+                {shouldShowField('signature', analysis.has_signature) && (
+                  <div className={`text-center p-2 rounded-lg ${getFieldBadgeStyle('signature', analysis.has_signature)}`}>
+                    <span className="text-xs font-bold">Signature</span>
+                    <p className="text-lg">{analysis.has_signature ? '✓' : '—'}</p>
+                  </div>
+                )}
+                {shouldShowField('letterhead', analysis.has_letterhead) && (
+                  <div className={`text-center p-2 rounded-lg ${getFieldBadgeStyle('letterhead', analysis.has_letterhead)}`}>
+                    <span className="text-xs font-bold">Letterhead</span>
+                    <p className="text-lg">{analysis.has_letterhead ? '✓' : '—'}</p>
+                    {rules.letterhead === 'unexpected' && analysis.has_letterhead && <p className="text-[10px]">unexpected</p>}
+                  </div>
+                )}
               </div>
-              <div className={`text-center p-2 rounded-lg ${getBadgeStyle(analysis.has_signature)}`}>
-                <span className="text-xs font-bold">Signature</span>
-                <p className="text-lg">{analysis.has_signature ? '✓' : '—'}</p>
+            )}
+
+            {/* Identity document specific */}
+            {DOC_GROUPS.PERSONAL.includes(docType) && (
+              <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
+                <div className={`text-center p-2 rounded-lg ${
+                  analysis.extracted_data?.has_photo 
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-600 border border-amber-200'
+                }`}>
+                  <span className="text-xs font-bold">Photo</span>
+                  <p className="text-lg">{analysis.extracted_data?.has_photo ? '✓' : '—'}</p>
+                </div>
+                <div className={`text-center p-2 rounded-lg ${
+                  analysis.extracted_data?.data_readable
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-600 border border-amber-200'
+                }`}>
+                  <span className="text-xs font-bold">Readable</span>
+                  <p className="text-lg">{analysis.extracted_data?.data_readable ? '✓' : '—'}</p>
+                </div>
               </div>
-              <div className={`text-center p-2 rounded-lg ${getBadgeStyle(analysis.has_letterhead)}`}>
-                <span className="text-xs font-bold">Letterhead</span>
-                <p className="text-lg">{analysis.has_letterhead ? '✓' : '—'}</p>
+            )}
+
+            {/* Photo collection specific */}
+            {DOC_GROUPS.PHOTOS.includes(docType) && (
+              <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
+                <div className="text-center p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-xs font-bold text-slate-600">Photos</span>
+                  <p className="text-lg text-slate-800">{analysis.extracted_data?.photo_count || analysis.images_count || 0}</p>
+                </div>
+                <div className={`text-center p-2 rounded-lg ${
+                  analysis.extracted_data?.overall_damage_visible
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-600 border border-amber-200'
+                }`}>
+                  <span className="text-xs font-bold">Shows Damage</span>
+                  <p className="text-lg">{analysis.extracted_data?.overall_damage_visible ? '✓' : '—'}</p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Images in document */}
-            {analysis.has_images && (
+            {analysis.has_images && !DOC_GROUPS.PHOTOS.includes(docType) && (
               <div className="mt-3 pt-3 border-t border-slate-100">
                 <p className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1">
                   <Camera size={12} />
@@ -269,35 +404,105 @@ const AnalysisSection = ({ analysis }) => {
         )}
 
         {/* Image-specific fields */}
-        {!isPDF && (
+        {!isPDF && !isScreenshot && (
           <>
-            {analysis.shows_damage !== undefined && (
-              <div className="flex justify-between">
-                <span className="text-sm text-slate-600">Shows Damage</span>
-                <span className={`text-sm font-bold ${analysis.shows_damage ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {analysis.shows_damage ? 'Yes' : 'No'}
-                </span>
-              </div>
+            {/* Damage photos - show damage details */}
+            {DOC_GROUPS.DAMAGE_IMAGES.includes(docType) && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-sm text-slate-600">Shows Damage</span>
+                  <span className={`text-sm font-bold ${
+                    analysis.shows_damage ? 'text-emerald-600' : 'text-red-600'
+                  }`}>
+                    {analysis.shows_damage ? 'Yes ✓' : 'No ✗'}
+                  </span>
+                </div>
+                {analysis.shows_damage && analysis.damage_severity && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-600">Damage Severity</span>
+                    <span className={`text-sm font-bold px-2 py-0.5 rounded ${
+                      analysis.damage_severity === 'severe' || analysis.damage_severity === 'catastrophic'
+                        ? 'bg-red-100 text-red-700'
+                        : analysis.damage_severity === 'moderate'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {analysis.damage_severity}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
-            {analysis.damage_severity && (
-              <div className="flex justify-between">
-                <span className="text-sm text-slate-600">Damage Severity</span>
-                <span className="text-sm font-mono text-slate-800">{analysis.damage_severity}</span>
-              </div>
+
+            {/* Property images - show condition, damage optional */}
+            {DOC_GROUPS.PROPERTY_IMAGES.includes(docType) && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-sm text-slate-600">Property Condition</span>
+                  <span className={`text-sm font-bold ${
+                    analysis.shows_damage ? 'text-amber-600' : 'text-emerald-600'
+                  }`}>
+                    {analysis.shows_damage ? 'Damaged' : 'Intact'}
+                  </span>
+                </div>
+                {analysis.shows_damage && analysis.damage_severity && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-600">Damage Severity</span>
+                    <span className="text-sm text-slate-800">{analysis.damage_severity}</span>
+                  </div>
+                )}
+                {docType === 'before_after' && (
+                  <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg mt-2">
+                    <p className="text-xs text-blue-700">📸 Before/After comparison photo</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Document/ID photos - show authenticity */}
+            {DOC_GROUPS.DOC_IMAGES.includes(docType) && (
+              <>
+                {analysis.extracted_data?.appears_authentic !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-600">Appears Authentic</span>
+                    <span className={`text-sm font-bold ${
+                      analysis.extracted_data.appears_authentic ? 'text-emerald-600' : 'text-red-600'
+                    }`}>
+                      {analysis.extracted_data.appears_authentic ? 'Yes ✓' : 'Questionable ⚠'}
+                    </span>
+                  </div>
+                )}
+                {analysis.extracted_data?.document_readable !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-600">Document Readable</span>
+                    <span className={`text-sm font-bold ${
+                      analysis.extracted_data.document_readable ? 'text-emerald-600' : 'text-amber-600'
+                    }`}>
+                      {analysis.extracted_data.document_readable ? 'Yes ✓' : 'Partially'}
+                    </span>
+                  </div>
+                )}
+                {/* Warning if damage detected on ID/doc photo (unexpected) */}
+                {analysis.shows_damage && (
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg mt-2">
+                    <p className="text-xs text-amber-700">⚠️ Damage detection on document photo - please verify</p>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
-        
-        {/* Brief description */}
-        {analysis.brief_description && (
+
+        {/* Brief description - always show if present */}
+        {analysis.brief_description && !isScreenshot && (
           <div className="mt-3 pt-3 border-t border-slate-100">
             <p className="text-xs font-bold text-slate-500 mb-1">Description</p>
             <p className="text-sm text-slate-700">{analysis.brief_description}</p>
           </div>
         )}
 
-        {/* Content summary */}
-        {analysis.content_summary && (
+        {/* Content summary - always show if present */}
+        {analysis.content_summary && !isScreenshot && (
           <div className="mt-3 pt-3 border-t border-slate-100">
             <p className="text-xs font-bold text-slate-500 mb-1">Content Summary</p>
             <p className="text-sm text-slate-700">{analysis.content_summary}</p>
@@ -313,8 +518,8 @@ const ExtractedDataSection = ({ extractedData, documentType, warnings = [] }) =>
   if (!extractedData || Object.keys(extractedData).length === 0) return null;
 
   // Check if there are editing-related warnings
-  const hasEditingWarning = warnings.some(w => 
-    w.toLowerCase().includes('photoshop') || 
+  const hasEditingWarning = warnings.some(w =>
+    w.toLowerCase().includes('photoshop') ||
     w.toLowerCase().includes('editing software') ||
     w.toLowerCase().includes('edited') ||
     w.toLowerCase().includes('manipulation')
@@ -364,7 +569,7 @@ const ExtractedDataSection = ({ extractedData, documentType, warnings = [] }) =>
       <div className="space-y-3">
         {Object.entries(extractedData).map(([key, value]) => {
           if (value === null || value === undefined) return null;
-          
+
           const config = fieldLabels[key] || { label: key.replace(/_/g, ' '), icon: null };
           const Icon = config.icon;
 
@@ -372,10 +577,10 @@ const ExtractedDataSection = ({ extractedData, documentType, warnings = [] }) =>
           if (key === 'appears_authentic') {
             const isCompromised = hasEditingWarning;
             const displayValue = isCompromised ? '⚠️ Questionable' : (value ? '✓ Yes' : '✗ No');
-            const colorClass = isCompromised 
-              ? 'text-amber-600 bg-amber-50' 
+            const colorClass = isCompromised
+              ? 'text-amber-600 bg-amber-50'
               : (value ? 'text-emerald-600' : 'text-red-600');
-            
+
             return (
               <div key={key} className={`flex justify-between items-center p-2 rounded ${isCompromised ? 'bg-amber-50' : ''}`}>
                 <span className="text-sm text-slate-600 flex items-center gap-1">
@@ -487,7 +692,7 @@ const PDFViewer = ({ url }) => {
       }
     };
     fetchPdf();
-    
+
     return () => {
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
     };
@@ -548,7 +753,7 @@ const ImageViewer = ({ url, alt }) => {
       }
     };
     fetchImage();
-    
+
     return () => {
       if (imageBlobUrl) URL.revokeObjectURL(imageBlobUrl);
     };
@@ -573,8 +778,8 @@ const ImageViewer = ({ url, alt }) => {
   }
 
   return (
-    <img 
-      src={imageBlobUrl} 
+    <img
+      src={imageBlobUrl}
       alt={alt}
       className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
     />
@@ -585,18 +790,18 @@ const ImageViewer = ({ url, alt }) => {
 const DocumentPreview = ({ file, onClose }) => {
   if (!file) return null;
 
-  const isImage = file.type?.startsWith('image/') || 
+  const isImage = file.type?.startsWith('image/') ||
     ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => file.name?.toLowerCase().endsWith(ext));
   const isPDF = file.name?.toLowerCase().endsWith('.pdf');
-  
+
   // Use API endpoint if taskId available, otherwise use local blob
-  const previewUrl = file.taskId 
+  const previewUrl = file.taskId
     ? `${API_URL}/file/${file.taskId}`
     : (file.previewUrl || (file.file ? URL.createObjectURL(file.file) : null));
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div 
+      <div
         className="bg-white rounded-2xl max-w-5xl max-h-[90vh] w-full overflow-hidden shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
@@ -626,7 +831,7 @@ const DocumentPreview = ({ file, onClose }) => {
             </button>
           </div>
         </div>
-        
+
         {/* Content */}
         <div className="p-4 max-h-[calc(90vh-80px)] overflow-auto bg-slate-100 flex items-center justify-center min-h-[60vh]">
           {isImage && previewUrl ? (
@@ -638,8 +843,8 @@ const DocumentPreview = ({ file, onClose }) => {
               <FileText size={48} className="mx-auto mb-4 opacity-50" />
               <p>Preview not available</p>
               {previewUrl && (
-                <a 
-                  href={previewUrl} 
+                <a
+                  href={previewUrl}
                   download={file.name}
                   className="text-teal-600 hover:underline mt-2 inline-block"
                 >
@@ -751,7 +956,7 @@ function App() {
     }
     return [];
   });
-  
+
   const [selectedFileId, setSelectedFileId] = useState(() => {
     try {
       return localStorage.getItem('docVerification_selectedId') || null;
@@ -759,14 +964,14 @@ function App() {
       return null;
     }
   });
-  
+
   const [isDragging, setIsDragging] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
 
   // Export single file report
   const exportFileReport = useCallback((file, format = 'json') => {
     if (!file?.result) return;
-    
+
     const report = {
       file_name: file.name,
       processed_at: file.result.timestamp,
@@ -780,7 +985,7 @@ function App() {
       analysis: file.result.analysis,
       validation: file.result.validation,
     };
-    
+
     if (format === 'html') {
       const html = generateHTMLReport([report], false);
       const blob = new Blob([html], { type: 'text/html' });
@@ -966,7 +1171,7 @@ function App() {
   const exportAllReportsJSON = useCallback(() => {
     const completedFiles = files.filter(f => f.status === 'completed' && f.result);
     if (completedFiles.length === 0) return;
-    
+
     const report = {
       generated_at: new Date().toISOString(),
       total_files: completedFiles.length,
@@ -987,7 +1192,7 @@ function App() {
         validation: f.result.validation,
       }))
     };
-    
+
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1001,7 +1206,7 @@ function App() {
   const exportAllReportsHTML = useCallback(() => {
     const completedFiles = files.filter(f => f.status === 'completed' && f.result);
     if (completedFiles.length === 0) return;
-    
+
     const fileReports = completedFiles.map(f => ({
       file_name: f.name,
       processed_at: f.result.timestamp,
@@ -1014,7 +1219,7 @@ function App() {
       warnings: f.result.warnings,
       analysis: f.result.analysis,
     }));
-    
+
     const html = generateHTMLReport(fileReports, true);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
@@ -1108,7 +1313,7 @@ function App() {
   // Upload file
   const uploadFile = useCallback(async (file) => {
     const fileId = Math.random().toString(36).substr(2, 9);
-    
+
     setFiles(prev => [...prev, {
       id: fileId,
       name: file.name,
@@ -1199,14 +1404,14 @@ function App() {
     try {
       // Call retry endpoint
       const res = await axios.post(`${API_URL}/retry/${file.taskId}`);
-      
+
       // Update local state
       setFiles(prev => prev.map(f => {
         if (f.id === fileId) {
-          return { 
-            ...f, 
-            status: 'processing', 
-            stage: 'Retrying...', 
+          return {
+            ...f,
+            status: 'processing',
+            stage: 'Retrying...',
             result: null,
             error: null,
             retryCount: (f.retryCount || 0) + 1
@@ -1245,10 +1450,10 @@ function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-800">Document Verification</h1>
-              <p className="text-xs text-slate-500">Compensation Claims Processing v1.0</p>
+              <p className="text-xs text-slate-500">Compensation Claims Processing v2.0</p>
             </div>
           </div>
-          
+
           {/* Export dropdown */}
           {files.some(f => f.status === 'completed') && (
             <div className="relative group">
