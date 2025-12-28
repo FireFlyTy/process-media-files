@@ -115,10 +115,35 @@ def process_document(
     decision, decision_reason, is_acceptable = make_decision(analysis, validation)
     progress("decision", 0.95, f"Decision: {decision}")
 
-    # Step 4: Calculate combined confidence
-    combined_confidence = analysis.confidence * validation.confidence
+    # Step 4: Deduplicate ALL issues together to catch cross-category duplicates
+    from validators import calculate_confidence, deduplicate_issues
 
-    # Step 5: Compile result
+    raw_errors = validation.errors.copy() if validation.errors else []
+    raw_warnings = (analysis.warnings or []) + (validation.warnings or [])
+    raw_red_flags = analysis.red_flags.copy() if analysis.red_flags else []
+
+    # Combine all, dedupe
+    all_issues_raw = raw_errors + raw_red_flags + raw_warnings
+    deduped_all = deduplicate_issues(all_issues_raw)
+    deduped_set = set(i.lower().strip() for i in deduped_all)
+
+    # Filter originals to keep only deduped ones
+    deduped_errors = [e for e in raw_errors if e.lower().strip() in deduped_set]
+    deduped_red_flags = [f for f in raw_red_flags if f.lower().strip() in deduped_set]
+    deduped_warnings = [w for w in raw_warnings if w.lower().strip() in deduped_set]
+
+    # Step 5: Calculate confidence using new two-stage logic
+    llm_confidence = analysis.confidence  # Already classification × extraction
+    validation_confidence = validation.confidence
+    all_issues = deduped_errors + deduped_red_flags + deduped_warnings
+
+    final_confidence = calculate_confidence(
+        llm_confidence,
+        validation_confidence,
+        all_issues
+    )
+
+    # Step 6: Compile result
     progress("finalizing", 0.98, "Finalizing result...")
 
     result = PipelineResult(
@@ -129,11 +154,11 @@ def process_document(
         validation=validation,
         decision=decision,
         decision_reason=decision_reason,
-        confidence=combined_confidence,
+        confidence=final_confidence,
         is_acceptable=is_acceptable,
-        errors=validation.errors.copy(),
-        warnings=analysis.warnings + validation.warnings,
-        red_flags=analysis.red_flags.copy(),
+        errors=deduped_errors,
+        warnings=deduped_warnings,
+        red_flags=deduped_red_flags,
     )
 
     progress("done", 1.0, f"Complete: {decision}")

@@ -317,7 +317,7 @@ def validate_image_gps(
         result.extracted_data["gps_location"] = location
     else:
         location = get_location_description(lat, lon)
-        result.add_error(
+        result.add_warning(
             f"GPS coordinates ({lat:.4f}, {lon:.4f}) are outside Ukraine: {location}",
             "gps_valid"
         )
@@ -400,7 +400,7 @@ def validate_image_device(
 
     for suspicious in SUSPICIOUS_SOFTWARE:
         if suspicious in software_lower:
-            result.add_warning(
+            result.add_error(
                 f"Image was processed with editing software: {software}",
                 "software_check"
             )
@@ -513,7 +513,7 @@ def validate_pdf_producer(
     suspicious_producers = ["adobe photoshop", "gimp"]
     for susp in suspicious_producers:
         if susp in producer_lower:
-            result.add_warning(
+            result.add_error(
                 f"PDF created with image editing software: {producer}",
                 "producer_check"
             )
@@ -671,6 +671,191 @@ def validate_file(
 # DECISION LOGIC
 # =============================================================================
 
+# Critical red flags that lead to confidence = 0 (REJECT)
+CRITICAL_RED_FLAGS = [
+    "images don't match",
+    "images dont match",  # Without apostrophe
+    "don't match text claims",
+    "dont match text claims",
+    "document appears forged",
+    "tampering detected",
+    "fake document",
+    "editing software",  # Photoshop, GIMP, etc.
+    "photoshop",
+    "gimp",
+]
+
+# Suspicious red flags that lead to confidence = 0.25 (REVIEW)
+SUSPICIOUS_RED_FLAGS = [
+    "government stamp",
+    "no gps",
+    "no camera",
+    "no device",
+    "date before war",
+    "low resolution",
+    "metadata stripped",
+    "downloaded",
+    "outside ukraine",  # GPS coordinates outside Ukraine
+]
+
+# Technical errors that should be REVIEW (not REJECT)
+TECHNICAL_ERRORS = [
+    "encrypted",
+    "encripted",  # Common typo
+    "decrypted",
+    "corrupted",
+    "cannot read",
+    "parsing issue",
+    "password protected",
+]
+
+
+def is_critical_issue(issue: str) -> bool:
+    """Check if issue is critical (leads to confidence = 0)."""
+    issue_lower = issue.lower()
+    return any(critical in issue_lower for critical in CRITICAL_RED_FLAGS)
+
+
+def is_suspicious_issue(issue: str) -> bool:
+    """Check if issue is suspicious (leads to confidence = 0.25)."""
+    issue_lower = issue.lower()
+    # Suspicious if matches suspicious patterns OR is any red flag not matching critical
+    if any(susp in issue_lower for susp in SUSPICIOUS_RED_FLAGS):
+        return True
+    return False
+
+
+def is_technical_error(error: str) -> bool:
+    """Check if error is technical (should be REVIEW, not REJECT)."""
+    error_lower = error.lower()
+    return any(tech in error_lower for tech in TECHNICAL_ERRORS)
+
+
+def bucket_confidence(raw_confidence: float) -> float:
+    """
+    Bucket raw LLM confidence into discrete levels.
+    
+    > 0.8  → 1.0
+    > 0.6  → 0.7
+    >= 0.3 → 0.5
+    < 0.3  → 0.25
+    """
+    if raw_confidence > 0.8:
+        return 1.0
+    elif raw_confidence > 0.6:
+        return 0.7
+    elif raw_confidence >= 0.3:
+        return 0.5
+    else:
+        return 0.25
+
+
+def calculate_confidence(
+    llm_confidence: float,
+    validation_confidence: float,
+    all_issues: list
+) -> float:
+    """
+    Calculate final confidence using two-stage approach.
+    
+    Stage 1: LLM confidence + red flags
+    - Bucket raw LLM confidence
+    - If critical issue → 0
+    - If suspicious issue → 0.25
+    
+    Stage 2: Apply validation penalties
+    - Multiply by validation.confidence
+    
+    Args:
+        llm_confidence: Raw confidence from LLM (classification × extraction)
+        validation_confidence: Confidence from metadata validation
+        all_issues: Combined list of red_flags + errors + warnings
+    
+    Returns:
+        Final confidence score
+    """
+    # Stage 1: Bucket LLM confidence
+    bucketed = bucket_confidence(llm_confidence)
+    
+    # Stage 1: Check for critical/suspicious issues
+    has_critical = any(is_critical_issue(issue) for issue in all_issues)
+    has_suspicious = any(is_suspicious_issue(issue) for issue in all_issues)
+    
+    if has_critical:
+        stage1_confidence = 0.0
+    elif has_suspicious:
+        stage1_confidence = 0.25
+    else:
+        stage1_confidence = bucketed
+    
+    # Stage 2: Apply validation confidence (already has penalties from add_error/add_warning)
+    final_confidence = stage1_confidence * validation_confidence
+    
+    return final_confidence
+
+
+# Keep old function for backward compatibility, but redirect to new logic
+def calculate_adjusted_confidence(
+    base_confidence: float,
+    red_flags: list,
+    warnings: list
+) -> float:
+    """
+    DEPRECATED: Use calculate_confidence() instead.
+    Kept for backward compatibility.
+    """
+    all_issues = red_flags + warnings
+    # Assume validation_confidence = 1.0 if not provided
+    return calculate_confidence(base_confidence, 1.0, all_issues)
+
+
+def deduplicate_issues(issues: list) -> list:
+    """Remove duplicate/similar issues."""
+    if not issues:
+        return []
+    
+    # Keywords that indicate same underlying issue
+    ENCRYPTION_KEYWORDS = ["encrypt", "decrypt", "password", "encript"]
+    CORRUPTION_KEYWORDS = ["corrupt", "damaged", "invalid"]
+    
+    def is_encryption_related(text: str) -> bool:
+        text_lower = text.lower()
+        return any(kw in text_lower for kw in ENCRYPTION_KEYWORDS)
+    
+    def is_corruption_related(text: str) -> bool:
+        text_lower = text.lower()
+        return any(kw in text_lower for kw in CORRUPTION_KEYWORDS)
+    
+    seen_exact = set()
+    seen_encryption = False
+    seen_corruption = False
+    result = []
+    
+    for issue in issues:
+        normalized = issue.lower().strip()
+        
+        # Skip exact duplicates
+        if normalized in seen_exact:
+            continue
+        
+        # Skip if we already have an encryption-related issue
+        if is_encryption_related(normalized):
+            if seen_encryption:
+                continue
+            seen_encryption = True
+        
+        # Skip if we already have a corruption-related issue
+        if is_corruption_related(normalized):
+            if seen_corruption:
+                continue
+            seen_corruption = True
+        
+        seen_exact.add(normalized)
+        result.append(issue)
+    
+    return result
+
+
 def make_decision(
     analysis: DocumentAnalysis,
     validation: ValidationResult
@@ -678,44 +863,67 @@ def make_decision(
     """
     Determine processing decision based on analysis and validation.
 
-    Args:
-        analysis: DocumentAnalysis from classification/extraction
-        validation: ValidationResult from metadata validation
+    Decision hierarchy:
+    1. Screenshot → REJECT (always)
+    2. Critical issues → REJECT (confidence = 0)
+    3. Technical errors → REVIEW (not reject, it's not fraud)
+    4. Suspicious issues → REVIEW (confidence capped at 0.25)
+    5. Confidence-based decision
 
     Returns:
         Tuple of (decision, reason, is_acceptable)
     """
-    # Auto-reject conditions
+    # Collect all issues and deduplicate together
+    raw_red_flags = analysis.red_flags or []
+    raw_warnings = (analysis.warnings or []) + (validation.warnings or [])
+    raw_errors = validation.errors or []
+    
+    # Deduplicate ALL together to catch cross-category duplicates
+    all_issues_raw = raw_errors + raw_red_flags + raw_warnings
+    deduped_all = deduplicate_issues(all_issues_raw)
+    deduped_set = set(i.lower().strip() for i in deduped_all)
+    
+    # Filter to keep only deduped
+    red_flags = [f for f in raw_red_flags if f.lower().strip() in deduped_set]
+    all_warnings = [w for w in raw_warnings if w.lower().strip() in deduped_set]
+    errors = [e for e in raw_errors if e.lower().strip() in deduped_set]
+    all_issues = errors + red_flags + all_warnings
+    
+    # 1. Screenshot → always REJECT
     if analysis.document_type == "screenshot" or analysis.creation_method == "screenshot":
         return (Decision.REJECT.value, "Screenshot not accepted as proof", False)
-
-    if not validation.is_valid:
-        reason = validation.errors[0] if validation.errors else "Validation failed"
-        return (Decision.REJECT.value, reason, False)
-
-    # Check for images not matching claims
-    if analysis.images_match_claims is False:
-        return (Decision.REJECT.value, "Images do not match document claims", False)
-
-    # Check red flags
-    red_flags = analysis.red_flags
-    if red_flags:
-        return (Decision.REVIEW.value, f"{len(red_flags)} red flag(s) require review", False)
-
-    # Check warnings
-    warnings = analysis.warnings + validation.warnings
-    if warnings:
-        return (Decision.REVIEW.value, f"{len(warnings)} warning(s) require review", False)
-
-    # Check confidence
-    combined_confidence = analysis.confidence * validation.confidence
-    if combined_confidence < 0.5:
-        return (Decision.REVIEW.value, "Low confidence, manual verification needed", False)
-
-    if combined_confidence >= 0.7:
+    
+    # 2. Check for critical issues (leads to confidence = 0, REJECT)
+    critical_issues = [i for i in all_issues if is_critical_issue(i) and not is_technical_error(i)]
+    if critical_issues:
+        return (Decision.REJECT.value, critical_issues[0], False)
+    
+    # 3. Technical errors → REVIEW (not REJECT, it's not fraud)
+    technical_issues = [i for i in all_issues if is_technical_error(i)]
+    if technical_issues:
+        return (Decision.REVIEW.value, f"Technical issue: {technical_issues[0]}", False)
+    
+    # 4. Check for suspicious issues (leads to confidence = 0.25, REVIEW)
+    suspicious_issues = [i for i in all_issues if is_suspicious_issue(i)]
+    if suspicious_issues:
+        return (Decision.REVIEW.value, f"{len(suspicious_issues)} issue(s) require review", False)
+    
+    # 5. ANY issues at all → REVIEW (even warnings)
+    if all_issues:
+        return (Decision.REVIEW.value, f"{len(all_issues)} issue(s) require review", False)
+    
+    # 6. Calculate confidence for remaining cases (no issues)
+    llm_confidence = analysis.confidence
+    validation_confidence = validation.confidence
+    final_confidence = calculate_confidence(llm_confidence, validation_confidence, all_issues)
+    
+    # 7. Confidence-based final decision (only when no issues)
+    if final_confidence >= 0.7:
         return (Decision.ACCEPT.value, "Document passed all checks", True)
-    else:
+    elif final_confidence >= 0.4:
         return (Decision.REVIEW.value, "Moderate confidence, verification recommended", False)
+    else:
+        return (Decision.REJECT.value, "Low confidence", False)
 
 
 # =============================================================================

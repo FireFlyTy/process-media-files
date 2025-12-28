@@ -217,6 +217,11 @@ const AnalysisSection = ({ analysis }) => {
   const getFieldBadgeStyle = (fieldName, hasValue) => {
     const rule = rules[fieldName];
 
+    // Special case: government stamp warning on damage_act
+    if (fieldName === 'stamp' && hasValue && hasGovernmentStampWarning) {
+      return 'bg-amber-50 text-amber-600 border border-amber-200'; // ⚠ Gov stamp warning
+    }
+
     if (rule === 'required') {
       return hasValue
         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' // ✓ Has required
@@ -900,25 +905,7 @@ const ValidationSection = ({ validation }) => {
         </div>
       )}
 
-      {/* Errors */}
-      {validation.errors?.length > 0 && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-xs font-bold text-red-600 mb-1">Errors</p>
-          {validation.errors.map((err, i) => (
-            <p key={i} className="text-sm text-red-800">• {err}</p>
-          ))}
-        </div>
-      )}
-
-      {/* Warnings */}
-      {validation.warnings?.length > 0 && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-xs font-bold text-amber-600 mb-1">Warnings</p>
-          {validation.warnings.map((warn, i) => (
-            <p key={i} className="text-sm text-amber-800">• {warn}</p>
-          ))}
-        </div>
-      )}
+      {/* Note: Errors and Warnings are shown in unified Issues section above */}
 
       {/* Extracted metadata */}
       {validation.extracted_data && Object.keys(validation.extracted_data).length > 0 && (
@@ -1607,31 +1594,47 @@ function App() {
                         <RotateCcw size={18} />
                       </button>
                       <DecisionBadge
-                        decision={selectedFile.result.decision} 
+                        decision={selectedFile.result.decision}
                         confidence={selectedFile.result.confidence}
                       />
                     </div>
                   </div>
-                  
-                  {/* Red flags */}
-                  {selectedFile.result.red_flags?.length > 0 && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-xs font-bold text-red-600 mb-2">🚩 Red Flags</p>
-                      {selectedFile.result.red_flags.map((flag, i) => (
-                        <p key={i} className="text-sm text-red-800">• {flag}</p>
-                      ))}
-                    </div>
-                  )}
 
-                  {/* Warnings */}
-                  {selectedFile.result.warnings?.length > 0 && (
-                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <p className="text-xs font-bold text-amber-600 mb-2">⚠️ Warnings</p>
-                      {selectedFile.result.warnings.map((warn, i) => (
-                        <p key={i} className="text-sm text-amber-800">• {warn}</p>
-                      ))}
-                    </div>
-                  )}
+                  {/* Unified Issues section - color depends on decision */}
+                  {(() => {
+                    const redFlags = selectedFile.result.red_flags || [];
+                    const warnings = selectedFile.result.warnings || [];
+                    const errors = selectedFile.result.errors || [];
+                    const allIssues = [...errors, ...redFlags, ...warnings];
+                    const decision = selectedFile.result.decision;
+
+                    if (allIssues.length === 0) return null;
+
+                    // Color scheme based on decision
+                    const isReject = decision === 'REJECT';
+                    const bgColor = isReject ? 'bg-red-50' : 'bg-amber-50';
+                    const borderColor = isReject ? 'border-red-200' : 'border-amber-200';
+                    const titleColor = isReject ? 'text-red-600' : 'text-amber-600';
+                    const textColor = isReject ? 'text-red-800' : 'text-amber-800';
+                    const icon = isReject ? '⛔' : '⚠️';
+
+                    return (
+                      <div className={`mt-4 p-3 ${bgColor} border ${borderColor} rounded-lg`}>
+                        <p className={`text-xs font-bold ${titleColor} mb-2`}>
+                          {icon} Issues ({allIssues.length})
+                        </p>
+                        {errors.map((err, i) => (
+                          <p key={`err-${i}`} className={`text-sm ${textColor}`}>• {err}</p>
+                        ))}
+                        {redFlags.map((flag, i) => (
+                          <p key={`flag-${i}`} className={`text-sm ${textColor}`}>• {flag}</p>
+                        ))}
+                        {warnings.map((warn, i) => (
+                          <p key={`warn-${i}`} className={`text-sm ${textColor}`}>• {warn}</p>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Details grid */}

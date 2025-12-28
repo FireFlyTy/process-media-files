@@ -582,7 +582,7 @@ class ValidationResult:
         """Add blocking error."""
         self.errors.append(message)
         self.is_valid = False
-        self.confidence = 0
+        self.confidence *= 0.3  # Severe penalty, but not zero
         if check_name:
             self.checks_failed.append(check_name)
 

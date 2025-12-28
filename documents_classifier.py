@@ -15,12 +15,11 @@ import os
 import json
 import base64
 from pathlib import Path
-from typing import Optional
-from dotenv import load_dotenv
-
-load_dotenv()
+from typing import Optional, Tuple
 
 from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
 
 from models import (
     ClassificationResult,
@@ -94,7 +93,7 @@ def get_pdf_page_count(file_path: str) -> Optional[int]:
         from pypdf import PdfReader
         reader = PdfReader(file_path)
         if reader.is_encrypted:
-            return -1
+            return -1  # Signal encrypted file
         return len(reader.pages)
     except Exception:
         return None
@@ -208,7 +207,16 @@ def extract_images_from_pdf(pdf_path: str, min_size: int = 100) -> dict:
             "total_images": int
         }
     """
-    import fitz
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        return {
+            "error": "PyMuPDF not installed",
+            "extraction_method": "none",
+            "images": [],
+            "pages_with_images": [],
+            "total_images": 0
+        }
 
     doc = fitz.open(pdf_path)
     images = []
@@ -557,14 +565,14 @@ def analyze_document(
     if file_type == "pdf":
         page_count = get_pdf_page_count(file_path)
         if page_count == -1:
+            # Encrypted PDF - return early with red flag
             return DocumentAnalysis.from_stages(
-        file_path=file_path,
-        file_type=file_type,
-        classification=ClassificationResult(red_flags=['File is encripted']),
-        extraction= None,
-        page_count=None,
-    )
-
+                file_path=file_path,
+                file_type=file_type,
+                classification=ClassificationResult(red_flags=['File is encrypted']),
+                extraction=None,
+                page_count=None,
+            )
 
     # =========================================================================
     # STAGE 1: Classification
@@ -732,12 +740,14 @@ def get_image_processing_rules(category: str) -> dict:
         "document_photo": {
             **base_rules,
             "check_gps": False,  # Documents don't need GPS
+            "check_date": False,  # Document photos can be taken anytime
             "require_date": False,
             "require_gps": False,
         },
         "identity_photo": {
             **base_rules,
             "check_gps": False,
+            "check_date": False,  # ID photos can be taken anytime
             "require_date": False,
             "require_gps": False,
         },
